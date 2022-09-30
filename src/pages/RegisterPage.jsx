@@ -4,9 +4,11 @@ import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import { auth, db, storage } from '../firebase'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { doc, setDoc } from 'firebase/firestore'
+import { useNavigate, Link } from 'react-router-dom'
 
 const RegisterPage = () => {
   const [err, setErr] = useState(false)
+  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -20,29 +22,33 @@ const RegisterPage = () => {
       const res = await createUserWithEmailAndPassword(auth, email, password)
 
       // Create a unique image name
-      const storageRef = ref(storage, displayName)
+      const date = new Date().getTime()
+      const storageRef = ref(storage, `${displayName + date}`)
 
-      const uploadTask = uploadBytesResumable(storageRef, file)
-
-      uploadTask.on(
-        (error) => {
-          setErr(true)
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+      await uploadBytesResumable(storageRef, file).then(() => {
+        getDownloadURL(storageRef).then(async (downloadURL) => {
+          try {
+            // Update profile
             await updateProfile(res.user, {
               displayName,
               photoURL: downloadURL,
             })
+            // Create user on Firestore
             await setDoc(doc(db, 'users', res.user.uid), {
               uid: res.user.uid,
               displayName,
               email,
               photoURL: downloadURL,
             })
-          })
-        }
-      )
+            // Create empty user chats on Firestore
+            await setDoc(doc(db, 'userChats', res.user.uid), {})
+            navigate('/')
+          } catch (err) {
+            console.log(err)
+            setErr(true)
+          }
+        })
+      })
     } catch (err) {
       setErr(true)
     }
@@ -65,7 +71,9 @@ const RegisterPage = () => {
           <button>Sign Up</button>
           {err && <span>Something went wrong</span>}
         </form>
-        <p>Already have an account? Login </p>
+        <p>
+          Already have an account? <Link to='/login'>Login</Link>{' '}
+        </p>
       </div>
     </div>
   )
